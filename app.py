@@ -77,11 +77,10 @@ def highlight_terms(text, query):
             text = pattern.sub(lambda m: f"<mark>{m.group(0)}</mark>", text)
     return text
 
-st.title("Buscador de documentos")
-st.write("---")
-st.markdown("Grupo 7")
-st.markdown("Soria, C., Zurita, M.")
-st.markdown("Modelo algebraico")
+st.sidebar.title("Buscador de documentos")
+st.sidebar.header("Grupo 7", divider='rainbow')
+st.sidebar.markdown("Soria, C., Zurita, M.")
+st.sidebar.markdown("Modelo algebraico")
 
 st.header('Selecciona tus documentos', divider='rainbow')
 
