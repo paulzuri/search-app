@@ -1,0 +1,27 @@
+DEBUG:root:Processing individual files: ['doc20.docx', 'doc19.docx', 'doc18.docx', 'doc17.docx', 'doc16.docx', 'doc15.docx', 'doc14.docx', 'doc13.docx', 'doc12.docx', 'doc11.docx', 'doc10.docx', 'doc9.docx', 'doc8.docx', 'doc7.docx', 'doc6.docx', 'doc5.docx', 'doc4.docx', 'doc3.docx', 'doc2.docx', 'doc1.docx']
+INFO:root:Word file C:/Users/paulzuri/Downloads/documentos/doc20.docx read successfully, 5865 characters
+INFO:root:Word file C:/Users/paulzuri/Downloads/documentos/doc19.docx read successfully, 10530 characters
+INFO:root:Word file C:/Users/paulzuri/Downloads/documentos/doc18.docx read successfully, 18134 characters
+INFO:root:Word file C:/Users/paulzuri/Downloads/documentos/doc17.docx read successfully, 19572 characters
+INFO:root:Word file C:/Users/paulzuri/Downloads/documentos/doc16.docx read successfully, 19799 characters
+INFO:root:Word file C:/Users/paulzuri/Downloads/documentos/doc15.docx read successfully, 9663 characters
+INFO:root:Word file C:/Users/paulzuri/Downloads/documentos/doc14.docx read successfully, 7351 characters
+INFO:root:Word file C:/Users/paulzuri/Downloads/documentos/doc13.docx read successfully, 22579 characters
+INFO:root:Word file C:/Users/paulzuri/Downloads/documentos/doc12.docx read successfully, 26106 characters
+INFO:root:Word file C:/Users/paulzuri/Downloads/documentos/doc11.docx read successfully, 17981 characters
+INFO:root:Word file C:/Users/paulzuri/Downloads/documentos/doc10.docx read successfully, 21078 characters
+INFO:root:Word file C:/Users/paulzuri/Downloads/documentos/doc9.docx read successfully, 13527 characters
+INFO:root:Word file C:/Users/paulzuri/Downloads/documentos/doc8.docx read successfully, 16415 characters
+INFO:root:Word file C:/Users/paulzuri/Downloads/documentos/doc7.docx read successfully, 24318 characters
+INFO:root:Word file C:/Users/paulzuri/Downloads/documentos/doc6.docx read successfully, 21851 characters
+INFO:root:Word file C:/Users/paulzuri/Downloads/documentos/doc5.docx read successfully, 16025 characters
+INFO:root:Word file C:/Users/paulzuri/Downloads/documentos/doc4.docx read successfully, 10041 characters
+INFO:root:Word file C:/Users/paulzuri/Downloads/documentos/doc3.docx read successfully, 11842 characters
+INFO:root:Word file C:/Users/paulzuri/Downloads/documentos/doc2.docx read successfully, 24419 characters
+INFO:root:Word file C:/Users/paulzuri/Downloads/documentos/doc1.docx read successfully, 27614 characters
+INFO:root:Reducing 20 documents
+INFO:root:Vocabulary size: 6899
+INFO:root:TF-IDF matrix created for 20 documents
+INFO:root:Reducing 20 documents
+INFO:root:Vocabulary size: 6899
+INFO:root:TF-IDF matrix created for 20 documents

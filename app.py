@@ -49,13 +49,12 @@ if uploaded_files:
             def highlight(text, term):
                 import re
                 pattern = re.compile(re.escape(term), re.IGNORECASE)
+                # Wrap matches in <mark>
                 return pattern.sub(lambda m: f"<mark>{m.group(0)}</mark>", text)
             for i, (name, content, score) in enumerate(ranked_docs):
                 total_words = len(content.split())
                 match_words = score
                 percentage = (match_words / total_words * 100) if total_words > 0 else 0
-                preview = content[:1000] + ("..." if len(content) > 1000 else "")
-                preview = highlight(preview, query)
                 expander_title = (
                     f"**{i+1}.** {name} "
                     f"(Relevancia: {score} | "
@@ -63,6 +62,15 @@ if uploaded_files:
                     f"Porcentaje: {percentage:.2f}%)"
                 )
                 with st.expander(expander_title):
-                    st.markdown(preview, unsafe_allow_html=True)
+                    # Highlight and show the whole document in a scrollable div
+                    highlighted_content = highlight(content, query)
+                    st.markdown(
+                        f"""
+                        <div style="max-height:400px;overflow:auto;white-space:pre-wrap;">
+                            {highlighted_content}
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
 else:
     st.info("Sube tus archivos para comenzar la búsqueda.")
