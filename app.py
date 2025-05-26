@@ -169,7 +169,11 @@ if uploaded_files:
                 \frac{\vec{A} \cdot \vec{B}}{\|\vec{A}\| \|\vec{B}\|}
             ''')
             scores = [cosine_similarity(query_vector, doc_vector) for doc_vector in doc_vectors]
-            ranked = sorted(zip(uploaded_files, raw_docs, scores), key=lambda x: x[2], reverse=True)
+            # Filtrar solo documentos con similitud > 0
+            ranked = sorted(
+                [(file, doc, score) for file, doc, score in zip(uploaded_files, raw_docs, scores) if score > 0],
+                key=lambda x: x[2], reverse=True
+            )
             with st.expander("Ver salida de consola"):
                 # ---impresión del paso 5 en el navegador
                 step_five_output = ["5. Calcular similitud coseno y ordenar resultados:"]
@@ -180,27 +184,29 @@ if uploaded_files:
                 st.code(step_five_output, language='plaintext')
 
             st.subheader("Resultados ordenados por relevancia")
-            for rank, (file, doc, score) in enumerate(ranked, 1):
-                st.write(f"{rank}. {os.path.basename(file.name)} - Similitud coseno: {score:.4f}")
-                highlighted_doc = highlight_terms(doc, search_query)
-                with st.expander(f"Ver contenido del documento"):
-                    st.markdown(
-                        f'<div style="max-height: 200px; overflow-y: auto; background: #f9f9f9; padding: 8px; border-radius: 4px; white-space: pre-wrap;">{highlighted_doc}</div>',
-                        unsafe_allow_html=True
-                    )
+            if ranked:
+                for rank, (file, doc, score) in enumerate(ranked, 1):
+                    st.write(f"{rank}. {os.path.basename(file.name)} - Similitud coseno: {score:.4f}")
+                    highlighted_doc = highlight_terms(doc, search_query)
+                    with st.expander(f"Ver contenido del documento"):
+                        st.markdown(
+                            f'<div style="max-height: 200px; overflow-y: auto; background: #f9f9f9; padding: 8px; border-radius: 4px; white-space: pre-wrap;">{highlighted_doc}</div>',
+                            unsafe_allow_html=True
+                        )
 
-            # Crear DataFrame con nombres de archivo y similitud coseno
-            doc_names = [os.path.basename(file.name) for file, _, _ in ranked]
-            df_sim = pd.DataFrame({
-                "Documento": doc_names,
-                "Similitud coseno": [score for _, _, score in ranked]
-            })
+                # Crear DataFrame y gráfica solo si hay documentos relevantes
+                doc_names = [os.path.basename(file.name) for file, _, _ in ranked]
+                df_sim = pd.DataFrame({
+                    "Documento": doc_names,
+                    "Similitud coseno": [score for _, _, score in ranked]
+                })
+                df_sim["Documento"] = pd.Categorical(df_sim["Documento"], categories=doc_names, ordered=True)
+                df_sim = df_sim.set_index("Documento")
 
-            df_sim["Documento"] = pd.Categorical(df_sim["Documento"], categories=doc_names, ordered=True)
-            df_sim = df_sim.set_index("Documento")
-
-            st.subheader("Gráfica de similitud coseno por documento")
-            st.line_chart(df_sim)
+                st.subheader("Gráfica de similitud coseno por documento")
+                st.line_chart(df_sim)
+            else:
+                st.info("No hay documentos relevantes para la consulta. Intenta con otra búsqueda.")
 
 else:       
     st.info("Sube tus archivos para comenzar la búsqueda.")
