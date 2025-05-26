@@ -7,6 +7,7 @@ from nltk.corpus import stopwords
 from nltk import download
 from docx import Document
 import pandas as pd
+from functools import reduce
 
 # descargar las stopwords de nltk si no están presentes
 download('stopwords')
@@ -105,7 +106,7 @@ if uploaded_files:
         
         if search_query:
             st.write("En el paso 2, se limpia y tokeniza el texto de los documentos y la consulta de búsqueda. Se utilizó `ntlk` para eliminar stopwords en inglés y español.")
-            clean_docs = [clean_words(text) for text in raw_docs]
+            clean_docs = list(map(clean_words, raw_docs))
             clean_query = clean_words(search_query)
 
             with st.expander("Ver salida de consola"):
@@ -126,7 +127,7 @@ if uploaded_files:
             # paso 3: crear el vocabulario único
             st.subheader("Paso 3")
             st.write("En el paso 3, se crea un vocabulario único a partir de las palabras de los documentos y la consulta de búsqueda. El vocabulario se guarda en una lista ordenada `vocab`.")
-            vocab = sorted(set(clean_query + sum(clean_docs, [])))
+            vocab = sorted(set(reduce(lambda x, y: x + y, clean_docs, clean_query)))
 
             with st.expander("Ver salida de consola"):
                 # ---impresión del paso 3 en el navegador
@@ -140,8 +141,8 @@ if uploaded_files:
             # paso 4: crear la matriz de frecuencia binaria
             st.subheader("Paso 4")
             st.write("En el paso 4, se crean los vectores binarios para los documentos y la consulta de búsqueda. Cada vector tiene una longitud igual al tamaño del vocabulario, y contiene 1 si la palabra está presente en el documento o consulta, o 0 si no lo está.")
+            doc_vectors = list(map(lambda doc: vectorize(doc, vocab), clean_docs))
             query_vector = vectorize(clean_query, vocab)
-            doc_vectors = [vectorize(doc, vocab) for doc in clean_docs]
             with st.expander("Ver salida de consola"):
                 # ---impresión del paso 4 en el navegador
                 step_four_output = [f"4. Creación del vectores binarios para documentos y query:"]
