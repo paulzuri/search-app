@@ -81,7 +81,7 @@ if uploaded_files:
         st.warning("Por favor, sube un máximo de 20 archivos.")
     else:
         # paso 1: cargar los documentos y guardarlos en un array raw_docs
-        raw_docs = [load_text(uploaded_file) for uploaded_file in uploaded_files]
+        raw_docs = list(map(load_text, uploaded_files))
         
         st.subheader("Paso 1")
        
