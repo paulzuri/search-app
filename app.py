@@ -1,80 +1,62 @@
 import streamlit as st
-from io import StringIO
-from docx import Document
+import os
 import re
-import math
-from collections import defaultdict, Counter
+import numpy as np
+import unicodedata
+from nltk.corpus import stopwords
+from nltk import download
+from docx import Document
 
-# --- Stopwords (Spanish, can be extended) ---
-STOP_WORDS = {
-    'que', 'con', 'por', 'para', 'una', 'los', 'las', 'del', 'como',
-    'sin', 'sobre', 'entre', 'hasta', 'desde', 'esta', 'este', 'esto',
-    'son', 'hay', 'muy', 'más', 'pero', 'sus', 'ser', 'ese', 'esa',
-    'uno', 'dos', 'tres', 'todo', 'toda', 'todos', 'todas', 'otro',
-    'otra', 'otros', 'otras', 'mismo', 'misma', 'mismos', 'mismas'
-}
+# descargar las stopwords de nltk si no están presentes
+download('stopwords')
+spanish_stopwords = set(stopwords.words('spanish'))
 
-def preprocess_text(text):
+# funciones crudas
+def load_text(uploaded_file):
+    """Carga el texto de un archivo .txt o .docx"""
+    if uploaded_file.name.endswith('.txt'):
+        content = uploaded_file.read()
+        if isinstance(content, bytes):
+            content = content.decode('utf-8')
+        return content
+    elif uploaded_file.name.endswith('.docx'):
+        doc = Document(uploaded_file)
+        return '\n'.join(p.text for p in doc.paragraphs)
+    else:
+        raise ValueError("Tipo de archivo no soportado")
+
+def normalize_text(text):
+    """Convierte el texto a minúsculas y elimina acentos"""
     text = text.lower()
-    text = re.sub(r'[^\w\sáéíóúñü]', ' ', text)
-    words = text.split()
-    words = [w for w in words if len(w) > 2 and w not in STOP_WORDS]
-    return words
+    text = ''.join(c for c in unicodedata.normalize('NFD', text) if unicodedata.category(c) != 'Mn')
+    return text
 
-def read_file(file):
-    if file.type == "text/plain":
-        return file.read().decode("utf-8")
-    elif file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-        doc = Document(file)
-        return "\n".join([para.text for para in doc.paragraphs])
-    return ""
+def tokenize(text):
+    """Divide el texto en palabras usando expresiones regulares"""
+    return re.findall(r'\b\w+\b', text)
 
-def compute_tf_idf(docs):
-    # docs: dict of {name: content}
-    processed = {name: preprocess_text(content) for name, content in docs.items()}
-    vocabulary = set(w for words in processed.values() for w in words)
-    doc_freq = defaultdict(int)
-    for words in processed.values():
-        for w in set(words):
-            doc_freq[w] += 1
-    tf_idf = {}
-    N = len(docs)
-    for name, words in processed.items():
-        tf_idf[name] = {}
-        total = len(words)
-        word_count = Counter(words)
-        for term in vocabulary:
-            tf = word_count[term] / total if total > 0 else 0
-            idf = math.log(N / doc_freq[term]) if doc_freq[term] > 0 else 0
-            tf_idf[name][term] = tf * idf
-    return tf_idf, vocabulary
+def clean_words(text):
+    """Tokeniza, normaliza y elimina stopwords del texto"""
+    tokens = tokenize(normalize_text(text))
+    return [word for word in tokens if word not in spanish_stopwords and word.isalpha()]
 
-def create_query_vector(query, vocabulary):
-    words = preprocess_text(query)
-    qvec = {}
-    for w in words:
-        if w in vocabulary:
-            qvec[w] = qvec.get(w, 0) + 1
-    return qvec
+def cosine_similarity(vec1, vec2):
+    """Calcula la similitud coseno entre dos vectores"""
+    if not np.any(vec1) or not np.any(vec2):
+        return 0.0
+    return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
 
-def cosine_similarity(qvec, dvec):
-    dot = sum(qvec.get(k, 0) * dvec.get(k, 0) for k in set(qvec) | set(dvec))
-    qmag = math.sqrt(sum(v ** 2 for v in qvec.values()))
-    dmag = math.sqrt(sum(v ** 2 for v in dvec.values()))
-    if qmag == 0 or dmag == 0:
-        return 0
-    return dot / (qmag * dmag)
+def vectorize(words, vocab):
+    """Convierte una lista de palabras en un vector binario según el vocabulario"""
+    return np.array([1 if word in words else 0 for word in vocab], dtype=int)
 
 def highlight_terms(text, query):
-    # Highlight full query first
-    if query.strip():
-        pattern = re.compile(re.escape(query), re.IGNORECASE)
-        text = pattern.sub(lambda m: f"<mark>{m.group(0)}</mark>", text)
-    # Then highlight each word (avoid double-highlighting)
-    for term in set(preprocess_text(query)):
-        if term and len(term) > 2:
-            pattern = re.compile(rf'(?<!<mark>)\b{re.escape(term)}\b(?!</mark>)', re.IGNORECASE)
-            text = pattern.sub(lambda m: f"<mark>{m.group(0)}</mark>", text)
+    # Resalta cada término de la consulta en el texto
+    terms = set(clean_words(query))
+    for term in sorted(terms, key=len, reverse=True):
+        if term:
+            pattern = re.compile(rf'({re.escape(term)})', re.IGNORECASE)
+            text = pattern.sub(r'<mark>\1</mark>', text)
     return text
 
 st.sidebar.title("Buscador de documentos")
@@ -95,39 +77,95 @@ if uploaded_files:
     if len(uploaded_files) > 20:
         st.warning("Por favor, sube un máximo de 20 archivos.")
     else:
-        docs = {}
-        for file in uploaded_files:
-            docs[file.name] = read_file(file)
+        # paso 1: cargar los documentos y guardarlos en un array raw_docs
+        raw_docs = [load_text(uploaded_file) for uploaded_file in uploaded_files]
+        
+        st.subheader("Paso 1")
+        # ---impresión del paso 1 en el navegador
+        step_one_output=["1. Guardar los documentos en un array raw_docs:"]
+        for i, doc in enumerate(raw_docs, 1):
+            # asegurarse de que doc es una cadena de texto
+            if isinstance(doc, (bytes, memoryview)):
+                doc = doc.tobytes().decode('utf-8') if isinstance(doc, memoryview) else doc.decode('utf-8')
+            words = doc.split()
+            step_one_output.append(f"Documento {i} (raw_docs[{i-1}]): {len(words)} palabras. Primeras 5 palabras: {words[:5]}")
+        step_one_output.append("NOTA: raw_docs contiene el texto completo de cada documento para cada posición, se ha tokenizado el print para mostrar las primeras 5 palabras.\n")            
+        step_one_output = "\n".join(step_one_output)       
+        # --fin del print
 
-        query = st.text_input("Escribe tu consulta")
-        if query:
-            tf_idf, vocabulary = compute_tf_idf(docs)
-            qvec = create_query_vector(query, vocabulary)
-            results = []
-            for name, content in docs.items():
-                sim = cosine_similarity(qvec, tf_idf[name])
-                results.append((name, content, sim))
-            results.sort(key=lambda x: x[2], reverse=True)
-            st.subheader("Resultados ordenados por relevancia:")
-            for i, (name, content, sim) in enumerate(results):
-                total_words = len(content.split())
-                match_words = sum(1 for _ in re.finditer(re.escape(query), content, re.IGNORECASE))
-                percentage = (match_words / total_words * 100) if total_words > 0 else 0
-                expander_title = (
-                    f"**{i+1}.** {name} "
-                    f"(Similitud: {sim:.4f} | "
-                    f"Coincidencias: {match_words} | "
-                    f"Porcentaje: {percentage:.2f}%)"
+        st.code(step_one_output, language='plaintext')
+
+        # paso 2: limpiar y tokenizar los documentos y el search_query
+        st.subheader("Paso 2")
+
+        search_query = st.text_input("Escribe el texto que deseas buscar")
+        
+        if search_query:
+            clean_docs = [clean_words(text) for text in raw_docs]
+            clean_query = clean_words(search_query)
+
+            # ---impresión del paso 2 en el navegador
+            step_two_output=["2. Limpieza y tokenizado de los documentos crudos en un array de 2 dimensiones:"]
+            for i, doc in enumerate(clean_docs, 1):
+                step_two_output.append(f"Documento {i} (clean_docs[{i-1}][0 ... 4]): {len(doc)} palabras. Primeras 5 palabras: {doc[:5]}")
+            step_two_output.append(f"\nsearch_query: '{search_query}'; clean_query: {clean_query} (L= {len(clean_query)})")
+            step_two_output = "\n".join(step_two_output)
+            # ---fin del print
+
+            st.code(step_two_output, language='plaintext')
+
+            # paso 3: crear el vocabulario único
+            st.subheader("Paso 3")
+            vocab = sorted(set(clean_query + sum(clean_docs, [])))
+
+            # ---impresión del paso 3 en el navegador
+            step_three_output = [f"3. Creación del vocabulario único:"]
+            step_three_output.append(f"10 primeras palabras de vocab: {vocab[:10]}, L = {len(vocab)} palabras\n")
+            step_three_output = "\n".join(step_three_output)
+
+            st.code(step_three_output, language='plaintext')
+            # ---fin del print
+
+            # paso 4: crear la matriz de frecuencia binaria
+            st.subheader("Paso 4")
+            query_vector = vectorize(clean_query, vocab)
+            doc_vectors = [vectorize(doc, vocab) for doc in clean_docs]
+            # ---impresión del paso 4 en el navegador
+            step_four_output = [f"4. Creación del vectores binarios para documentos y query:"]
+            step_four_output.append(f"Vector de la consulta (query_vector): {query_vector} (L = {len(query_vector)} palabras)")
+            indices = np.where(query_vector == 1)[0]
+            step_four_output.append("Índices con 1 en query vector: " + str(indices.tolist()))
+            step_four_output.append("Aciertos: " + str(len(indices)))
+            step_four_output.append("Corresponde a las palabras de vocab: " + str([vocab[i] for i in indices]) + "\n")
+            for i, (doc_vector, uploaded_file) in enumerate(zip(doc_vectors, uploaded_files), 1):
+                step_four_output.append(f"Vector del Documento {i} - '{uploaded_file.name}' - (doc_vectors[{i-1}]): {doc_vector} (L = {len(doc_vector)} palabras)")
+                indices = np.where(doc_vector == 1)[0]
+                step_four_output.append(f"Índices con 1 en doc_vectors[{i-1}]: " + str(indices.tolist()))
+                step_four_output.append("Aciertos: " + str(len(indices)))
+                step_four_output.append("Corresponde a las 5 primeras palabras de vocab: " + str([vocab[i] for i in indices[:5]]) + "\n")
+            step_four_output = "\n".join(step_four_output)
+            st.code(step_four_output, language='plaintext')
+
+            # paso 5: calcular la similitud coseno
+            st.subheader("Paso 5")
+            scores = [cosine_similarity(query_vector, doc_vector) for doc_vector in doc_vectors]
+            ranked = sorted(zip(uploaded_files, raw_docs, scores), key=lambda x: x[2], reverse=True)
+            # ---impresión del paso 5 en el navegador
+            step_five_output = ["5. Calcular similitud coseno y ordenar resultados:"]
+            for rank, (file, doc, score) in enumerate(ranked, 1):
+                step_five_output.append(f"\n{rank}. {os.path.basename(file.name)}")
+                step_five_output.append(f"Similitud coseno: {score:.4f}")
+            step_five_output = "\n".join(step_five_output)
+            st.code(step_five_output, language='plaintext')
+
+            st.subheader("Resultados ordenados por relevancia")
+            for rank, (file, doc, score) in enumerate(ranked, 1):
+                st.write(f"{rank}. {os.path.basename(file.name)} - Similitud coseno: {score:.4f}")
+                highlighted_doc = highlight_terms(doc, search_query)
+                st.markdown(
+                    f'<div style="max-height: 200px; overflow-y: auto; background: #f9f9f9; padding: 8px; border-radius: 4px; white-space: pre-wrap;">{highlighted_doc}</div>',
+                    unsafe_allow_html=True
                 )
-                with st.expander(expander_title):
-                    highlighted_content = highlight_terms(content, query)
-                    st.markdown(
-                        f"""
-                        <div style="max-height:400px;overflow:auto;white-space:pre-wrap;">
-                            {highlighted_content}
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-else:
+
+else:       
     st.info("Sube tus archivos para comenzar la búsqueda.")
