@@ -2,3 +2,5 @@ streamlit
 python-docx
 nltk
 pandas
+rdflib
+rank_bm25
