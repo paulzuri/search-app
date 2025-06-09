@@ -261,7 +261,7 @@ if q:
     top = np.argsort(scores)[::-1]
     shown = 0
     i = 0
-    while shown < 5 and i < len(top):
+    while i < len(top):
         idx = top[i]
         if scores[idx] == 0:
             i += 1
