@@ -59,26 +59,52 @@ def compute_ner(df, review_col):
 # Extract events based on English verbs using NLTK WordNet
 def compute_events(df, review_col):
     df = df.copy()
-    def extract_verbs(text):
-        doc = nlp(str(text))
-        return [token.lemma_ for token in doc if token.pos_ == "VERB"]
-    df['events'] = df[review_col].fillna('').apply(extract_verbs)
+    # Define keywords for each event type
+    purchase_keywords = ["buy", "bought", "purchase", "purchased", "order", "ordered"]
+    return_keywords = ["return", "returned", "refund", "refunded", "exchange", "exchanged"]
+    complain_keywords = ["complain", "complained", "issue", "problem", "bad", "broken", "defective", "doesn't work", "didn't work", "not working", "malfunction", "malfunctioned", "faulty"]
+
+    def extract_events(text):
+        text_lower = str(text).lower()
+        events = []
+        if any(word in text_lower for word in purchase_keywords):
+            events.append("purchase")
+        if any(word in text_lower for word in return_keywords):
+            events.append("return")
+        if any(word in text_lower for word in complain_keywords):
+            events.append("complain")
+        return events
+
+    df['events'] = df[review_col].fillna('').apply(extract_events)
     return df
 
 # Example relation extraction (adjusted for English)
 def compute_relations(df, review_col):
     df = df.copy()
-    def extract_rel(t):
+    # Define simple sentiment/action mappings
+    positive_verbs = ["love", "like", "recommend", "enjoy"]
+    negative_verbs = ["hate", "dislike", "return", "refund", "bad", "broken", "defective", "problem", "issue"]
+    # You can expand these lists as needed
+
+    sentiment_map = {
+        "negative": negative_verbs,
+        "positive": positive_verbs
+    }
+
+    def extract_relations(row):
+        user = row.get('reviews.username', 'unknown')
+        product = row.get('name', 'unknown')
+        text = str(row.get(review_col, '')).lower()
         rels = []
-        t = str(t)
-        # Example: "X for Y"
-        for m in re.finditer(r'(\w+)\s+for\s+(\w+)', t):
-            rels.append((m.group(1), 'for', m.group(2)))
-        # Example: "X is Y"
-        for m in re.finditer(r'(\w+)\s+is\s+(\w+)', t):
-            rels.append((m.group(1), 'is', m.group(2)))
+        for verb in positive_verbs:
+            if verb in text:
+                rels.append((user, verb, product))
+        for verb in negative_verbs:
+            if verb in text:
+                rels.append((user, verb, product))
         return rels
-    df['relations'] = df[review_col].fillna('').apply(extract_rel)
+
+    df['relations'] = df.apply(extract_relations, axis=1)
     return df
 
 # Build RDF graph
@@ -142,13 +168,6 @@ st.write(df[[review_col, 'relations']].head())
 st.header("6. Construcción de grafo RDF mediante rdflib")
 with st.spinner("Building RDF graph..."):
 
-    # your real columns
-    user_col   = 'reviews.username'
-    id_col     = 'id'
-    rating_col = 'reviews.rating'
-    title_col  = 'reviews.title'
-
-    # build the rdflib graph
     from rdflib import Graph, Namespace, Literal, URIRef
     import urllib.parse
 
@@ -156,38 +175,31 @@ with st.spinner("Building RDF graph..."):
     EX = Namespace('http://example.org/')
 
     for _, row in df.iterrows():
-        u   = str(row[user_col]) if not pd.isna(row[user_col]) else 'unknown'
-        pid = str(row[id_col])       if not pd.isna(row[id_col])   else 'unknown'
-
-        uri_user = EX[urllib.parse.quote(u,   safe='')]
-        uri_prod = EX[urllib.parse.quote(pid, safe='')]
-
-        g.add((uri_user, EX.rated,   uri_prod))
-        g.add((uri_prod, EX.rating,  Literal(row[rating_col]  if not pd.isna(row[rating_col]) else '')))
-        g.add((uri_prod, EX.summary, Literal(row[title_col]   if not pd.isna(row[title_col])  else '')))
+        user = str(row['reviews.username']) if not pd.isna(row['reviews.username']) else 'unknown'
+        # Use relations extracted for this review
+        relations = row.get('relations', [])
+        # If relations is a string (from CSV), try to eval to list
+        if isinstance(relations, str):
+            try:
+                import ast
+                relations = ast.literal_eval(relations)
+            except Exception:
+                relations = []
+        for subj, pred, obj in relations:
+            # Encode all parts for URI safety
+            subj_uri = EX[urllib.parse.quote(str(subj), safe='')]
+            pred_uri = EX[urllib.parse.quote(str(pred), safe='')]
+            obj_uri = EX[urllib.parse.quote(str(obj), safe='')]
+            g.add((subj_uri, pred_uri, obj_uri))
+        # Optionally, also link the user to the review/product as before
+        # user_uri = EX[urllib.parse.quote(user, safe='')]
+        # pid = str(row['id']) if not pd.isna(row['id']) else 'unknown'
+        # pid_uri = EX[urllib.parse.quote(pid, safe='')]
+        # g.add((user_uri, EX.rated, pid_uri))
+        # g.add((pid_uri, EX.rating,  Literal(row['reviews.rating'] if not pd.isna(row['reviews.rating']) else '')))
+        # g.add((pid_uri, EX.summary, Literal(row['reviews.title'] if not pd.isna(row['reviews.title']) else '')))
 
     st.success(f"Graph with {len(g)} triples.")
-
-    # visualize with graphviz
-    import graphviz
-    def visualize_rdf(graph: Graph) -> graphviz.Digraph:
-        dot = graphviz.Digraph()
-        for s, p, o in graph:
-            # node names: just the local part after '/'
-            s_label = str(s).split('/')[-1]
-            if isinstance(o, URIRef):
-                o_label = str(o).split('/')[-1]
-            else:
-                o_label = str(o)
-            # add nodes & edge
-            dot.node(s_label, s_label)
-            dot.node(o_label, o_label)
-            dot.edge(s_label, o_label, label=str(p).split('/')[-1])
-        return dot
-
-    dot = visualize_rdf(g)
-    # pass the Digraph object directly
-    st.graphviz_chart(dot)
 
     # Pyvis visualization
     def visualize_rdf_pyvis(graph: Graph):
@@ -195,9 +207,10 @@ with st.spinner("Building RDF graph..."):
         for s, p, o in graph:
             s_label = str(s).split('/')[-1]
             o_label = str(o).split('/')[-1] if str(o).startswith('http') else str(o)
+            p_label = str(p).split('/')[-1]
             net.add_node(s_label, label=s_label)
             net.add_node(o_label, label=o_label)
-            net.add_edge(s_label, o_label, label=str(p).split('/')[-1])
+            net.add_edge(s_label, o_label, label=p_label)
         net.repulsion(node_distance=120, central_gravity=0.33)
         net.save_graph("rdf_graph.html")
         with open("rdf_graph.html", "r", encoding="utf-8") as f:
@@ -206,13 +219,43 @@ with st.spinner("Building RDF graph..."):
 
     visualize_rdf_pyvis(g)
 
-# Step 7: BM25 Search
-st.header("7. Búsqueda BM25 con ranking")
-corpus = [str(t).split() for t in df[review_col].fillna('')]
+# Step 7: BM25 Search (Semantic)
+st.header("7. Búsqueda BM25 semántica con ranking")
+
+# Define sentiment synonyms for query expansion
+SENTIMENT_SYNONYMS = {
+    "negative": ["hate", "dislike", "return", "refund", "bad", "broken", "defective", "problem", "issue", "complain"],
+    "positive": ["love", "like", "recommend", "enjoy"]
+}
+
+# Build a semantic corpus: review text + events + relation verbs
+def build_semantic_corpus(df, review_col):
+    corpus = []
+    for _, row in df.iterrows():
+        text = str(row.get(review_col, ''))
+        events = " ".join(row.get('events', []))
+        # Only use the predicate/verb from relations
+        relations = row.get('relations', [])
+        if isinstance(relations, str):
+            try:
+                import ast
+                relations = ast.literal_eval(relations)
+            except Exception:
+                relations = []
+        rel_verbs = " ".join([str(r[1]) for r in relations])
+        combined = f"{text} {events} {rel_verbs}"
+        corpus.append(combined.split())
+    return corpus
+
+corpus = build_semantic_corpus(df, review_col)
 bm25 = init_bm25(corpus)
 q = st.text_input("Query:")
 if q:
-    tokens = [w for w in q.split() if w.lower() not in stopwords_set]
+    # Expand query with sentiment synonyms
+    tokens = []
+    for w in q.split():
+        tokens.extend(SENTIMENT_SYNONYMS.get(w.lower(), [w.lower()]))
+    tokens = [w for w in tokens if w not in stopwords_set]
     scores = bm25.get_scores(tokens)
     import numpy as np
     top = np.argsort(scores)[::-1]
@@ -233,19 +276,18 @@ if q:
         if pd.isna(rating):
             rating = "N/A"
         username = df.iloc[idx].get('reviews.username', '')
-        # Highlight query tokens in review_text
+        # Highlight original query tokens in review_text
         highlighted_text = review_text
-        for token in tokens:
+        for token in q.split():
             if token.strip() == "":
                 continue
-            # Use regex for case-insensitive replacement, word boundaries
             highlighted_text = re.sub(
                 rf'({re.escape(token)})',
                 r'<mark>\1</mark>',
                 highlighted_text,
                 flags=re.IGNORECASE
             )
-        st.markdown(f"**ID:** {df.iloc[idx].get('id', '')} (Rating: {rating}) Score: {scores[idx]:.2f}")
+        st.markdown(f"**Product:** {df.iloc[idx].get('name', '')} (Rating: {rating}) Score: {scores[idx]:.2f}")
         st.markdown(f"**User:** {username}")
         st.markdown(f"**Title:** {df.iloc[idx].get('reviews.title', '')}")
         with st.expander("Show review text"):
